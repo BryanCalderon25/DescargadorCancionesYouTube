@@ -7,6 +7,17 @@ import difflib
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import threading
 import os
+from datetime import datetime
+
+# Ruta archivo historial
+HISTORIAL_PATH = os.path.join(os.getcwd(), "historial_descargas.txt")
+if not os.path.exists(HISTORIAL_PATH):
+    with open(HISTORIAL_PATH, 'w', encoding='utf-8') as f:
+        f.write("Historial de descargas\n\n")
+
+def registrar_en_historial(titulo, url):
+    with open(HISTORIAL_PATH, 'a', encoding='utf-8') as f:
+        f.write(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} - {titulo} - {url}\n")
 
 def centrar_ventana(ventana, ancho, alto):
     ventana.update_idletasks()
@@ -17,10 +28,6 @@ def centrar_ventana(ventana, ancho, alto):
     ventana.geometry(f"{ancho}x{alto}+{x}+{y}")
 
 def es_cancion_valida(titulo, canal, artista):
-    """
-    Verifica si un video es válido para descargar como canción oficial,
-    filtrando versiones no deseadas como en vivo, remix, karaoke, etc.
-    """
     titulo_lower = titulo.lower()
     canal_lower = canal.lower()
     artista_lower = artista.lower()
@@ -40,17 +47,11 @@ def es_cancion_valida(titulo, canal, artista):
     return similitud >= 0.3
 
 def limpiar_titulo(titulo):
-    """
-    Elimina textos entre paréntesis o corchetes y caracteres inválidos en el nombre del archivo.
-    """
     titulo = re.sub(r'\(.*?\)|\[.*?\]', '', titulo)
     titulo = re.sub(r'[\\/*?:"<>|]', '', titulo)
     return titulo.strip()
 
 def calcular_duracion_en_segundos(duracion_str):
-    """
-    Convierte una duración de video en formato HH:MM:SS o MM:SS a segundos.
-    """
     partes = list(map(int, duracion_str.split(":")))
     if len(partes) == 3:
         return partes[0] * 3600 + partes[1] * 60 + partes[2]
@@ -61,10 +62,6 @@ def calcular_duracion_en_segundos(duracion_str):
     return 0
 
 def buscar_videos(artista, cantidad):
-    """
-    Busca videos en YouTube relacionados con el artista y filtra los que son canciones oficiales,
-    que cumplen con duración y que no están repetidos.
-    """
     busqueda = VideosSearch(f"mejores canciones de {artista}", limit=20)
     titulos_filtrados = []
     urls = []
@@ -86,12 +83,10 @@ def buscar_videos(artista, cantidad):
             if not duracion:
                 continue
 
-
             segundos = calcular_duracion_en_segundos(duracion)
-            """
-    Busca videos que sean mayores a 2 minutos y menores a 7 minutos.
-    """
-            if segundos <= 120: 
+
+            # Filtrar canciones entre 2 y 7 minutos
+            if segundos <= 120:
                 continue
             if segundos > 420:
                 continue
@@ -118,10 +113,58 @@ def buscar_videos(artista, cantidad):
 
     return urls
 
+def buscar_videos_previsualizacion(artista, cantidad):
+    busqueda = VideosSearch(f"mejores canciones de {artista}", limit=20)
+    lista_filtrada = []
+    titulos = set()
+
+    while len(lista_filtrada) < cantidad:
+        resultado = busqueda.result()
+        videos = resultado.get("result", [])
+        if not videos:
+            break
+
+        for video in videos:
+            titulo = video.get("title", "")
+            canal = video.get("channel", {}).get("name", "")
+            duracion = video.get("duration", "")
+            url = video.get("link", "")
+
+            if not duracion:
+                continue
+
+            segundos = calcular_duracion_en_segundos(duracion)
+            if segundos <= 120 or segundos > 420:
+                continue
+
+            titulo_limpio = limpiar_titulo(titulo).lower()
+
+            if not es_cancion_valida(titulo, canal, artista):
+                continue
+
+            repetido = any(difflib.SequenceMatcher(None, titulo_limpio, t).ratio() > 0.85 for t in titulos)
+            if repetido:
+                continue
+
+            titulos.add(titulo_limpio)
+            lista_filtrada.append({
+                "titulo": titulo,
+                "canal": canal,
+                "duracion": duracion,
+                "url": url
+            })
+
+            if len(lista_filtrada) >= cantidad:
+                break
+
+        try:
+            busqueda.next()
+        except Exception:
+            break
+
+    return lista_filtrada
+
 def descargar_cancion(url, carpeta_destino):
-    """
-    Descarga el audio de un video de YouTube en formato mp3 en la carpeta indicada.
-    """
     try:
         with YoutubeDL({'quiet': True}) as ydl:
             info = ydl.extract_info(url, download=False)
@@ -145,12 +188,10 @@ def descargar_cancion(url, carpeta_destino):
 
     with YoutubeDL(opciones_descarga) as ydl:
         ydl.download([url])
+    
+    registrar_en_historial(titulo_limpio, url)
 
 def descargar_varias_canciones(urls, estado_var, artista, carpeta_base):
-    """
-    Gestiona la descarga de varias canciones en paralelo usando hilos.
-    Actualiza la variable de estado con el progreso.
-    """
     carpeta_artista = os.path.join(carpeta_base, artista.strip().replace(" ", "_"))
     os.makedirs(carpeta_artista, exist_ok=True)
 
@@ -161,24 +202,49 @@ def descargar_varias_canciones(urls, estado_var, artista, carpeta_base):
 
     estado_var.set(f"Descarga finalizada en: {carpeta_artista}")
 
+def ver_historial():
+    ventana_hist = tk.Toplevel(root)
+    ventana_hist.title("Historial de Descargas")
+    ventana_hist.resizable(False, False)
+    ventana_hist.configure(bg="#121212")
+    centrar_ventana(ventana_hist, 600, 400)
+
+    estilo = ttk.Style(ventana_hist)
+    estilo.theme_use('clam')
+    estilo.configure("TLabel", background="#121212", foreground="#e0e0e0", font=("Segoe UI", 11))
+    estilo.configure("TButton", font=("Segoe UI", 11), background="#3f51b5", foreground="white")
+    estilo.map("TButton", background=[('active', '#303f9f')])
+
+    texto_historial = tk.Text(ventana_hist, bg="#1e1e2f", fg="white", font=("Segoe UI", 10))
+    texto_historial.pack(padx=10, pady=10, fill='both', expand=True)
+    texto_historial.config(state='normal')
+
+    try:
+        with open(HISTORIAL_PATH, 'r', encoding='utf-8') as f:
+            contenido = f.read()
+        texto_historial.insert(tk.END, contenido)
+    except Exception as e:
+        texto_historial.insert(tk.END, f"No se pudo cargar el historial:\n{e}")
+
+    texto_historial.config(state='disabled')
+
+    ttk.Button(ventana_hist, text="Cerrar", command=ventana_hist.destroy).pack(pady=5)
+
 def crear_ventana_descarga():
     ventana = tk.Toplevel(root)
-    ventana.title("Nueva Descarga")
+    ventana.title("Descarga con Previsualización")
     ventana.resizable(False, False)
-    ventana.configure(bg="#1e1e2f")
-    centrar_ventana(ventana, 500, 300)
+    ventana.configure(bg="#121212")
+    centrar_ventana(ventana, 600, 500)
 
     estilo = ttk.Style(ventana)
     estilo.theme_use('clam')
-    estilo.configure("TLabel", background="#1e1e2f", foreground="#ffffff", font=("Arial", 12))
-    estilo.configure("TEntry", font=("Arial", 12))
-    estilo.configure("TButton", font=("Arial", 12), background="#4caf50", foreground="white")
-    estilo.map("TButton", background=[('active', '#45a049')])
-
-    ttk.Label(ventana, text="Descarga de Canciones Oficiales").pack(pady=15)
+    estilo.configure("TLabel", background="#121212", foreground="#e0e0e0", font=("Segoe UI", 11))
+    estilo.configure("TButton", font=("Segoe UI", 11), background="#3f51b5", foreground="white")
+    estilo.map("TButton", background=[('active', '#303f9f')])
 
     frame_form = ttk.Frame(ventana)
-    frame_form.pack(pady=10, padx=20, fill='x')
+    frame_form.pack(padx=20, pady=15, fill='x')
 
     ttk.Label(frame_form, text="Nombre del artista:").grid(row=0, column=0, sticky='w')
     entrada_artista = ttk.Entry(frame_form)
@@ -189,10 +255,14 @@ def crear_ventana_descarga():
     entrada_cantidad = ttk.Entry(frame_form)
     entrada_cantidad.grid(row=1, column=1, sticky='ew', padx=5)
 
-    estado_var = tk.StringVar()
-    ttk.Label(ventana, textvariable=estado_var, font=("Arial", 10, "italic")).pack(pady=10)
+    # Lista para previsualizar canciones (selección múltiple)
+    lista_canciones = tk.Listbox(ventana, selectmode=tk.MULTIPLE, bg="#1e1e2f", fg="white", font=("Segoe UI", 10))
+    lista_canciones.pack(padx=20, pady=5, fill='both', expand=True)
 
-    def iniciar_descarga():
+    estado_var = tk.StringVar()
+    ttk.Label(ventana, textvariable=estado_var, font=("Segoe UI", 10, "italic"), background="#121212", foreground="#b0b0b0").pack(pady=5)
+
+    def buscar_y_mostrar():
         artista = entrada_artista.get().strip()
         cantidad_str = entrada_cantidad.get().strip()
 
@@ -208,43 +278,96 @@ def crear_ventana_descarga():
             messagebox.showwarning("Aviso", "Cantidad inválida. Debe ser un número entero positivo.")
             return
 
+        estado_var.set("Buscando canciones, espere por favor...")
+        lista_canciones.delete(0, tk.END)
+
+        def tarea_busqueda():
+            try:
+                canciones = buscar_videos_previsualizacion(artista, cantidad)
+                if not canciones:
+                    estado_var.set("No se encontraron canciones válidas.")
+                    return
+
+                for i, cancion in enumerate(canciones, 1):
+                    titulo = cancion["titulo"]
+                    duracion = cancion["duracion"]
+                    canal = cancion["canal"]
+                    lista_canciones.insert(tk.END, f"{i}. {titulo} ({duracion}) - {canal}")
+                lista_canciones.canciones = canciones
+                estado_var.set(f"{len(canciones)} canciones encontradas. Seleccione para descargar.")
+            except Exception as e:
+                estado_var.set(f"Error en la búsqueda: {e}")
+
+        threading.Thread(target=tarea_busqueda).start()
+
+    def seleccionar_todo():
+        lista_canciones.select_set(0, tk.END)
+        estado_var.set(f"Todas las canciones han sido seleccionadas.")
+
+    def deseleccionar_todo():
+        lista_canciones.select_clear(0, tk.END)
+        estado_var.set(f"Ninguna canción está seleccionada.")
+
+    def iniciar_descarga():
+        seleccionados = lista_canciones.curselection()
+        if not seleccionados:
+            messagebox.showwarning("Aviso", "Debe seleccionar al menos una canción para descargar.")
+            return
+
         carpeta = filedialog.askdirectory(title="Seleccione la carpeta para guardar las canciones")
         if not carpeta:
             estado_var.set("Descarga cancelada. No se seleccionó carpeta.")
             return
 
-        estado_var.set("Buscando canciones, espere por favor...")
+        seleccion = [lista_canciones.canciones[i]["url"] for i in seleccionados]
+        artista = entrada_artista.get().strip()
 
-        def tarea_busqueda_descarga():
-            try:
-                urls = buscar_videos(artista, cantidad)
-                if not urls:
-                    estado_var.set("No se encontraron canciones válidas.")
-                    return
-                estado_var.set(f"{len(urls)} canciones encontradas. Iniciando descarga...")
-                descargar_varias_canciones(urls, estado_var, artista, carpeta)
-                ventana.destroy()  # Cierra la ventana secundaria al terminar la descarga
-            except Exception as e:
-                estado_var.set(f"Error en la búsqueda o descarga: {e}")
+        estado_var.set("Iniciando descarga...")
 
-        threading.Thread(target=tarea_busqueda_descarga).start()
+        def tarea_descarga():
+            descargar_varias_canciones(seleccion, estado_var, artista, carpeta)
+            messagebox.showinfo("Descarga completa", f"Las canciones seleccionadas fueron descargadas correctamente.\nCarpeta: {carpeta}")
+            ventana.destroy()
 
-    ttk.Button(ventana, text="Buscar y Descargar", command=iniciar_descarga).pack(pady=15)
+        threading.Thread(target=tarea_descarga).start()
 
-# Ventana principal
+    frame_botones = ttk.Frame(ventana)
+    frame_botones.pack(pady=10, fill='x')
+
+    btn_buscar = ttk.Button(frame_botones, text="Buscar", command=buscar_y_mostrar)
+    btn_buscar.pack(side="left", padx=5)
+
+    btn_seleccionar_todo = ttk.Button(frame_botones, text="Seleccionar todo", command=seleccionar_todo)
+    btn_seleccionar_todo.pack(side="left", padx=5)
+
+    btn_deseleccionar_todo = ttk.Button(frame_botones, text="Deseleccionar todo", command=deseleccionar_todo)
+    btn_deseleccionar_todo.pack(side="left", padx=5)
+
+    btn_descargar = ttk.Button(frame_botones, text="Descargar seleccionadas", command=iniciar_descarga)
+    btn_descargar.pack(side="right", padx=5)
+
+# Ventana principal 
 root = tk.Tk()
 root.title("Gestor de Descargas de Canciones")
 root.resizable(False, False)
-root.configure(bg="#1e1e2f")
-centrar_ventana(root, 400, 200)
+root.configure(bg="#121212")
+centrar_ventana(root, 400, 220)
 
 estilo_principal = ttk.Style(root)
 estilo_principal.theme_use('clam')
-estilo_principal.configure("TLabel", background="#1e1e2f", foreground="#ffffff", font=("Arial", 12))
-estilo_principal.configure("TButton", font=("Arial", 12), background="#4caf50", foreground="white")
-estilo_principal.map("TButton", background=[('active', '#45a049')])
+estilo_principal.configure("TLabel", background="#121212", foreground="#e0e0e0", font=("Segoe UI", 14))
+estilo_principal.configure("TButton", font=("Segoe UI", 12), background="#3f51b5", foreground="white")
+estilo_principal.map("TButton", background=[('active', '#303f9f')])
 
-ttk.Label(root, text="Descargador de Canciones - Múltiples Búsquedas").pack(pady=30)
-ttk.Button(root, text="Nueva Descarga", command=crear_ventana_descarga).pack(pady=20)
+ttk.Label(root, text="Gestor de Descargas").pack(pady=20)
+
+frame_botones_principal = ttk.Frame(root)
+frame_botones_principal.pack(pady=10, fill='x')
+
+btn_nueva_descarga = ttk.Button(frame_botones_principal, text="Nueva Descarga", command=crear_ventana_descarga)
+btn_nueva_descarga.pack(side="left", padx=20, expand=True)
+
+btn_historial = ttk.Button(frame_botones_principal, text="Ver Historial", command=ver_historial)
+btn_historial.pack(side="right", padx=20, expand=True)
 
 root.mainloop()
