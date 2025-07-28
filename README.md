@@ -3,13 +3,13 @@
 Este programa en Python permite buscar y descargar canciones oficiales desde YouTube en formato `.mp3`. Tiene filtros para evitar versiones no deseadas como en vivo, covers o remixes. Usa `yt_dlp` para descargar y `ffmpeg` para convertir el audio.
 
 
-## ✅ Características
+##  Características
 
 - Búsqueda automática de canciones oficiales por artista.
 - Filtro inteligente para evitar versiones en vivo, lyrics, covers o remixes.
 - Descarga en paralelo con múltiples hilos (`ThreadPoolExecutor`).
 - Conversión automática a `.mp3` con calidad 192 kbps (`ffmpeg`).
-- Interfaz gráfica amigable desarrollada con `Tkinter`.
+- Interfaz gráfica  desarrollada con `Tkinter`.
 - Organización de canciones en carpetas por artista.
 - Vista previa con opción de selección múltiple antes de descargar.
 - Acceso al historial completo de descargas desde la interfaz.
@@ -17,12 +17,12 @@ Este programa en Python permite buscar y descargar canciones oficiales desde You
 
 ## 💻 Requisitos
 
-- **Python 3.8 o superior** (Windows 10 u 11 recomendado).
+- **Python 3.8 o superior**
 - Librerías de Python: `yt_dlp`, `youtube-search-python`.
 - Tener `ffmpeg` instalado y agregado al `PATH` del sistema.
 
 
-## 📦 Instalación
+##  Instalación
 
 ### 1. Instalar librerías de Python
 
@@ -58,7 +58,7 @@ ffmpeg -version
 Si muestra la versión, la instalación fue exitosa.
 
 
-## 🚀 Uso del programa
+##  Uso del programa
 
 1. Ejecuta el script `descargar.py`.
 2. En la ventana principal, haz clic en **"Nueva Descarga"**.
@@ -70,18 +70,18 @@ Si muestra la versión, la instalación fue exitosa.
 
 
 
-## ⚙️ Detalles técnicos
+##  Detalles técnicos
 
 - Utiliza `difflib.SequenceMatcher` para detectar y evitar canciones repetidas.
 - Limpieza de nombres de archivos para evitar errores por caracteres inválidos.
 - Filtro de duración: solo canciones entre **2 y 7 minutos**.
-- Interfaz fluida gracias al uso de `ThreadPoolExecutor`.
+- Interfaz con el uso de `ThreadPoolExecutor`.
 - Filtros aplicados por título, canal, duración y coincidencia de artista.
 - Historial guardado automáticamente en `historial_descargas.txt`.
 
 
 
-## 🗂️ Organización del Proyecto
+##  Organización del Proyecto
 
 descargar.py: Script principal con la lógica e interfaz del programa.
 
